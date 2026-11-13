@@ -4,9 +4,9 @@
 
 **Goal:** A zero-dependency Node CLI that reads local Claude Code + Codex logs and pushes daily token totals to a Cloudflare Worker, which serves an embeddable SVG heatmap card and a profile page per GitHub user.
 
-**Architecture:** `cli/` parses logs into daily rows `{day, tool, model, input, output, cache_read, cache_write, reasoning}` and pushes them with a per-machine API key obtained via GitHub device-flow login. `server/` is one Worker on D1: it stores rows per machine, sums across machines on read, computes tokens/cost/streak, and renders SVG + HTML from pure functions.
+**Architecture:** `cli/` parses logs into daily rows `{day, tool, model, input, output, cache_read, cache_write, reasoning, estimated}` and pushes them with a per-machine API key obtained via GitHub device-flow login. `server/` is one Worker on D1: it stores rows per machine, sums across machines on read, computes tokens/cost/streak, and renders SVG + HTML from pure functions.
 
-**Tech Stack:** Node ≥ 18 (ESM, `node:test`, global `fetch`), Cloudflare Workers + D1 + `wrangler` (dev dependency only), plain JavaScript everywhere.
+**Tech Stack:** Node ≥ 20 (`.jsonl.zst` read only when `zlib.zstdDecompressSync` exists) (ESM, `node:test`, global `fetch`), Cloudflare Workers + D1 + `wrangler` (dev dependency only), plain JavaScript everywhere.
 
 **Spec:** `docs/superpowers/specs/2026-11-13-tokengazer-design.md`
 
@@ -16,6 +16,7 @@
 - Never send prompts, code, paths, project names or session content — only the row fields above plus `machine_id`.
 - GitHub OAuth requests **no scopes** (identity only); the server discards the GitHub token after reading `/user`.
 - Tokens: Claude = `input + output + cache_read + cache_write`; Codex = `input + output` (cached ⊂ input, reasoning ⊂ output).
+- Estimated rows (deleted Claude history) are always counted and always marked: headline `~<N> TOKENS · <E> ESTIMATED`, outlined squares for estimated-only days.
 - Day bucket = the user's local date of the entry timestamp, `YYYY-MM-DD`.
 - Usage PK `(github_id, machine_id, day, tool, model)`; reads sum across machines.
 - Push rejects negative numbers, days in the future (> UTC today + 1) or before `2023-01-01`, and any single field > `10_000_000_000`.
@@ -45,9 +46,10 @@
   - `parseClaudeLines(lines: string[], seen: Set<string>) -> Usage[]`
   - `parseCodexLines(lines: string[]) -> Usage[]`
   - `aggregate(usages: Usage[]) -> Row[]`
-  - `scan(home: string) -> Row[]` — walks `<home>/.claude/projects/**/*.jsonl` and `<home>/.codex/sessions/**/*.jsonl`
+  - `estimateClaude(rows: Row[], promptsByDay: Map<string, number>, modelsByDay: Map<string, Record<string, number>>) -> Row[]` — estimated rows only
+  - `scan(home: string) -> Row[]` — measured rows from `<home>/.claude/projects/**/*.jsonl`, `<home>/.codex/sessions/**/*.jsonl(.zst)`, plus `estimateClaude` from `<home>/.claude/history.jsonl` (`timestamp` ms) and `<home>/.claude/stats-cache.json` (`dailyModelTokens[].{date, tokensByModel}`)
   - `Usage = { ts: string, tool: 'claude'|'codex', model: string, input, output, cache_read, cache_write, reasoning }` (numbers)
-  - `Row = { day: 'YYYY-MM-DD', tool, model, input, output, cache_read, cache_write, reasoning }`
+  - `Row = { day: 'YYYY-MM-DD', tool, model, input, output, cache_read, cache_write, reasoning, estimated: boolean }`
 
 `package.json`: `"name": "tokengazer"`, `"type": "module"`, `"bin": {"tokengazer": "bin/tokengazer.js"}`, `"engines": {"node": ">=18"}`, `"scripts": {"test": "TZ=Asia/Kolkata node --test"}`.
 
@@ -85,6 +87,24 @@ const codexLines = [
     total_token_usage: { input_tokens: 99999, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 },
     last_token_usage: { input_tokens: 32921, cached_input_tokens: 7808, output_tokens: 48, reasoning_output_tokens: 10 } } } }),
 ];
+test('codex: skips re-emitted token_count with unchanged total', () => {
+  assert.equal(parseCodexLines([...codexLines, codexLines[2]]).length, 1);
+});
+test('codex: token_usage_record wins when present', () => {
+  const rec = JSON.stringify({ timestamp: '2026-10-30T08:00:00Z', type: 'token_usage_record', payload: { usage: { input_tokens: 5, cached_input_tokens: 1, output_tokens: 2, reasoning_output_tokens: 0 } } });
+  const out = parseCodexLines([...codexLines, rec]);
+  assert.deepEqual(out.map((u) => u.input), [5]);
+});
+test('claude: skips <synthetic> model', () =>
+  assert.equal(parseClaudeLines([claudeLine('m9', 'r9', '2026-11-12T10:00:00Z', u, '<synthetic>')], new Set()).length, 0));
+test('estimateClaude: median tokens/prompt, split by stats-cache models, only for days without logs', () => {
+  const m = (day, n) => ({ day, tool: 'claude', model: 'claude-opus-5-5', input: 0, output: n, cache_read: 0, cache_write: 0, reasoning: 0, estimated: false });
+  const rows = [m('2026-10-10', 100), m('2026-10-11', 300), m('2026-10-12', 1000)];
+  const prompts = new Map([['2026-10-10', 1], ['2026-10-11', 1], ['2026-10-12', 1], ['2026-05-01', 10]]);
+  const est = estimateClaude(rows, prompts, new Map([['2026-05-01', { 'claude-opus-4-6': 3, 'claude-sonnet-4-6': 1 }]]));
+  assert.deepEqual(est.map((r) => [r.day, r.model, r.output, r.estimated]),
+    [['2026-05-01', 'claude-opus-4-6', 2250, true], ['2026-05-01', 'claude-sonnet-4-6', 750, true]]);
+});
 test('codex: uses last_token_usage, model from turn_context, skips null info', () => {
   assert.deepEqual(parseCodexLines(codexLines), [{ ts: '2026-10-30T07:24:11Z', tool: 'codex', model: 'gpt-6-astra',
     input: 32921, output: 48, cache_read: 7808, cache_write: 0, reasoning: 10 }]);
@@ -93,7 +113,7 @@ test('codex: uses last_token_usage, model from turn_context, skips null info', (
 test('aggregate: buckets by local day (TZ=Asia/Kolkata) and sums per tool+model', () => {
   const base = { tool: 'claude', model: 'm', input: 1, output: 1, cache_read: 0, cache_write: 0, reasoning: 0 };
   const rows = aggregate([{ ...base, ts: '2026-11-12T20:00:00Z' }, { ...base, ts: '2026-11-13T01:00:00Z' }]);
-  assert.deepEqual(rows, [{ ...base, day: '2026-11-13', input: 2, output: 2 }]);
+  assert.deepEqual(rows, [{ ...base, day: '2026-11-13', input: 2, output: 2, estimated: false }]);
 });
 
 test('scan: works when only one tool is installed', () => {
@@ -105,7 +125,7 @@ test('scan: works when only one tool is installed', () => {
 ```
 
 - [ ] **Step 2: Run** `cd cli && npm test` — Expected: FAIL, `logs.js` exports missing.
-- [ ] **Step 3: Implement `cli/src/logs.js`.** Wrap each `JSON.parse` in try/catch and skip. Codex: carry the latest `payload.model` seen in the file (default `'unknown'`). `aggregate` key = `day|tool|model`; local day from `Date#getFullYear/getMonth/getDate`. `scan` uses `readdirSync(dir, { recursive: true })` filtered to `.jsonl`; a missing root yields `[]`. One `seen` set per `scan` call.
+- [ ] **Step 3: Implement `cli/src/logs.js`.** Wrap each `JSON.parse` in try/catch and skip. Codex: carry the latest `turn_context` `payload.model` (default `'unknown'`); if any line is `token_usage_record` use only those, else `token_count` deduped on `JSON.stringify(total_token_usage)`. `.zst` files: `zlib.zstdDecompressSync` when available, else skip. Estimate field mix = overall measured Claude `input/output/cache_read/cache_write` proportions (output-only in the test above); round each field. Days with no stats-cache entry use the most-used model across `rows`. `aggregate` key = `day|tool|model`; local day from `Date#getFullYear/getMonth/getDate`. `scan` uses `readdirSync(dir, { recursive: true })` filtered to `.jsonl`; a missing root yields `[]`. One `seen` set per `scan` call.
 - [ ] **Step 4: Run** `cd cli && npm test` — Expected: all PASS.
 - [ ] **Step 5: Commit** `git add cli && git commit -m "cli: parse Claude and Codex logs into daily rows"`
 
@@ -124,7 +144,7 @@ test('scan: works when only one tool is installed', () => {
   - `costOf(row: Row, prices = PRICES) -> number` (USD)
   - `PRICES: { [modelPrefix: string]: { input, output, cache_read, cache_write } }` — USD per 1M tokens; longest matching prefix wins; no match → cost 0
   - `summarize(rows: Row[], today: string) -> Summary`
-  - `Summary = { tokens, cost, activeDays, streak, byTool: { claude, codex }, byDay: Map<string, number>, byModel: [{ tool, model, tokens, cost }] }`
+  - `Summary = { tokens, estimatedTokens, cost, activeDays, streak, byTool: { claude, codex }, byDay: Map<string, number>, estimatedDays: Set<string>, byModel: [{ tool, model, tokens, cost }] }` — `estimatedDays` = days whose only rows are estimated
   - `fmt(n: number) -> string` — `3_000_000_000 → '3.0B'`, `950_000_000 → '950M'`, `12_300 → '12.3K'`, `999 → '999'`
 
 `server/package.json`: `"type": "module"`, `"scripts": {"test": "node --test", "dev": "wrangler dev", "deploy": "wrangler deploy"}`, devDependency `wrangler`.
@@ -152,6 +172,10 @@ test('summarize: streak counts back from today, or from yesterday if today is em
 test('summarize: totals and split', () => {
   const s = summarize([row({ input: 5 }), row({ tool: 'codex', model: 'gpt-6', input: 3 })], '2026-11-12');
   assert.deepEqual([s.tokens, s.activeDays, s.byTool.claude, s.byTool.codex], [8, 1, 5, 3]);
+});
+test('summarize: estimated tokens counted and tracked', () => {
+  const s = summarize([row({ input: 5 }), row({ day: '2026-05-01', input: 7, estimated: true })], '2026-11-12');
+  assert.deepEqual([s.tokens, s.estimatedTokens, [...s.estimatedDays]], [12, 7, ['2026-05-01']]);
 });
 test('fmt', () => assert.deepEqual([3e9, 9.5e8, 12300, 999].map(fmt), ['3.0B', '950M', '12.3K', '999']));
 ```
@@ -185,11 +209,19 @@ test('card: headline, split, stat labels, 365+ cells, escapes login', () => {
   const svg = renderCard('a<b', s, '2026-11-12');
   assert.match(svg, /^<svg[^>]+xmlns="http:\/\/www.w3.org\/2000\/svg"/);
   assert.match(svg, /3\.0B TOKENS OVER 1 ACTIVE DAYS/);
+  assert.ok(!svg.includes('ESTIMATED'));
   assert.match(svg, /3\.0B Claude · 0 Codex/);
   for (const l of ['Tokens', 'Cost', 'Active days', 'Streak']) assert.ok(svg.includes(l));
   assert.ok((svg.match(/<rect class="d/g) || []).length >= 365);
   assert.ok(!svg.includes('a<b') && svg.includes('a&lt;b'));
   assert.ok(!/@import|url\(http/.test(svg));
+});
+test('card: estimates shown in headline and as outlined cells', () => {
+  const r = { tool: 'claude', model: 'x', output: 0, cache_read: 0, cache_write: 0, reasoning: 0 };
+  const s = summarize([{ ...r, day: '2026-11-12', input: 2.5e9, estimated: false }, { ...r, day: '2026-11-01', input: 9.7e9, estimated: true }], '2026-11-12');
+  const svg = renderCard('k', s, '2026-11-12');
+  assert.match(svg, /~12\.2B TOKENS · 9\.7B ESTIMATED/);
+  assert.equal((svg.match(/class="d\d est"/g) || []).length, 1);
 });
 test('card: null summary renders not-tracking card', () => assert.match(renderCard('x', null, '2026-11-12'), /not tracking yet/i));
 test('page: contains card, year links, model breakdown and privacy note', () => {
@@ -201,7 +233,7 @@ test('page: contains card, year links, model breakdown and privacy note', () => 
 ```
 
 - [ ] **Step 2: Run** `cd server && npm test` — Expected: FAIL.
-- [ ] **Step 3: Implement `server/src/render.js`.** Grid = 53 week-columns × 7 rows (Sun…Sat), ending at the week containing `today`; each cell `<rect class="d<level>">`; colors in one `<style>` block: background `#111`, level 0 `#1f1a17`, levels 1–4 an orange ramp ending `#e8692c`. Font stack `ui-monospace, SFMono-Regular, Menlo, monospace`. Page reuses the card markup for the selected year's 365 days (`renderCard` with `today` = Dec 31 of that year, or real today for the current year), then a table of `byModel`, and the privacy note: "tokengazer only receives daily token totals per tool and model. Prompts, code and file paths never leave your machine."
+- [ ] **Step 3: Implement `server/src/render.js`.** Grid = 53 week-columns × 7 rows (Sun…Sat), ending at the week containing `today`; each cell `<rect class="d<level>">`, estimated-only days `class="d<level> est"` (transparent fill, orange stroke); colors in one `<style>` block: background `#111`, level 0 `#1f1a17`, levels 1–4 an orange ramp ending `#e8692c`. Font stack `ui-monospace, SFMono-Regular, Menlo, monospace`. Page reuses the card markup for the selected year's 365 days (`renderCard` with `today` = Dec 31 of that year, or real today for the current year), then a table of `byModel`, and the privacy note: "tokengazer only receives daily token totals per tool and model. Prompts, code and file paths never leave your machine."
 - [ ] **Step 4: Run** `cd server && npm test` — Expected: PASS. Also write the card to a file and open it in a browser to eyeball it against the reference screenshot.
 - [ ] **Step 5: Commit** `git add server && git commit -m "server: render SVG card and profile page"`
 
@@ -219,7 +251,7 @@ test('page: contains card, year links, model breakdown and privacy note', () => 
   - `POST /api/login` body `{ github_token, machine_id }` → `200 { api_key, login }`; `401` if GitHub `/user` fails
   - `POST /api/push` `Authorization: Bearer <api_key>` body `{ rows: Row[] }` (≤ 500) → `200 { stored: n }`; `400 { error }`; `401`
   - `DELETE /api/me` Bearer → deletes the user, all machines and usage → `200`
-  - `GET /<login>.svg`, `GET /<login>[?year=YYYY]`, `GET /` → short landing text with install command
+  - `GET /<login>.svg`, `GET /<login>.json` (summed rows), `GET /<login>[?year=YYYY]`, `GET /` → short landing text with install command
   - `validateRows(rows: unknown, todayUtc: string) -> { ok: true, rows } | { ok: false, error: string }` exported for tests
 
 `schema.sql`: tables exactly as in the spec; `users.login` stored lowercase with a unique index; `machines.api_key_hash` = hex SHA-256 of the key (`crypto.subtle`); API key = 32 random bytes hex.
@@ -227,11 +259,11 @@ test('page: contains card, year links, model breakdown and privacy note', () => 
 - [ ] **Step 1: Write failing tests** for `validateRows`:
 
 ```js
-const ok = { day: '2026-11-12', tool: 'claude', model: 'm', input: 1, output: 1, cache_read: 0, cache_write: 0, reasoning: 0 };
+const ok = { day: '2026-11-12', tool: 'claude', model: 'm', input: 1, output: 1, cache_read: 0, cache_write: 0, reasoning: 0, estimated: false };
 test('accepts valid rows', () => assert.equal(validateRows([ok], '2026-11-12').ok, true));
 for (const [name, bad] of [
   ['negative', { ...ok, input: -1 }], ['future', { ...ok, day: '2026-11-14' }], ['too old', { ...ok, day: '2022-12-31' }],
-  ['over ceiling', { ...ok, output: 1e10 + 1 }], ['bad tool', { ...ok, tool: 'cursor' }], ['bad day', { ...ok, day: '12/11/2026' }],
+  ['over ceiling', { ...ok, output: 1e10 + 1 }], ['bad tool', { ...ok, tool: 'cursor' }], ['estimated not boolean', { ...ok, estimated: 'yes' }], ['bad day', { ...ok, day: '12/11/2026' }],
 ]) test(`rejects ${name}`, () => assert.equal(validateRows([bad], '2026-11-12').ok, false));
 test('rejects more than 500 rows', () => assert.equal(validateRows(Array(501).fill(ok), '2026-11-12').ok, false));
 ```
@@ -288,7 +320,7 @@ test('schedule: linux crontab line', () =>
 ```
 
 - [ ] **Step 2: Run** `cd cli && npm test` — Expected: FAIL.
-- [ ] **Step 3: Implement `cli/src/cli.js` and `cli/bin/tokengazer.js`.** Login uses GitHub device flow directly from the CLI: `POST https://github.com/login/device/code` (`client_id`, no scope) → print `user_code` + open `verification_uri` (`open` on macOS, `xdg-open` on Linux, ignore failure) → poll `https://github.com/login/oauth/access_token` at the given `interval`, handling `authorization_pending` and `slow_down` → `POST /api/login` → write config → install schedule (`launchctl load -w` / append to `crontab -l` if absent) → run one `push` → print `[![tokens](<host>/<login>.svg)](<host>/<login>)`. `GITHUB_CLIENT_ID` is a constant in `cli.js` (public by design). `push` exits with code 1 and a one-line stderr message on failure. `logout` removes the schedule and config; `--delete` calls `DELETE /api/me` first.
+- [ ] **Step 3: Implement `cli/src/cli.js` and `cli/bin/tokengazer.js`.** Login uses GitHub device flow directly from the CLI: `POST https://github.com/login/device/code` (`client_id`, no scope) → print `user_code` + open `verification_uri` (`open` on macOS, `xdg-open` on Linux, ignore failure) → poll `https://github.com/login/oauth/access_token` at the given `interval`, handling `authorization_pending` and `slow_down` → `POST /api/login` → write config → print the `cleanupPeriodDays: 3650` tip if `~/.claude/settings.json` lacks it → install schedule (`launchctl load -w` / append to `crontab -l` if absent) → run one `push` → print `[![tokens](<host>/<login>.svg)](<host>/<login>)`. `GITHUB_CLIENT_ID` is a constant in `cli.js` (public by design). `push` exits with code 1 and a one-line stderr message on failure. `logout` removes the schedule and config; `--delete` calls `DELETE /api/me` first.
 - [ ] **Step 4: Run** `cd cli && npm test` — Expected: PASS.
 - [ ] **Step 5: Commit** `git add cli && git commit -m "cli: login, push, logout and hourly schedule"`
 
