@@ -11,7 +11,7 @@ const STYLE = `<style>
 text{font-family:${FONT};fill:#8b8b8b;font-size:11px;letter-spacing:.12em}
 .h{fill:#ededed;font-size:14px}.v{fill:#f5f5f5;font-size:24px;letter-spacing:0}.l{font-size:11px;letter-spacing:.04em}
 .box{fill:none;stroke:#2a2a2a}.d0{fill:#1f1a17}.d1{fill:#4a2a19}.d2{fill:#7a3a1d}.d3{fill:#b04f22}.d4{fill:#e8692c}
-.est{fill-opacity:.55;stroke:#e8692c;stroke-opacity:.7;stroke-dasharray:2 1.5}.mark{fill:#e8692c;letter-spacing:.04em}
+.mark{fill:#e8692c;letter-spacing:.04em}
 </style>`;
 
 const ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -41,7 +41,7 @@ function grid(s, today) {
       if (col < 51) months.push(`<text x="${x}" y="226">${MONTHS[m]}</text>`);
       lastMonth = m;
     }
-    const cls = `d${heatLevel(s.byDay.get(day) || 0, max)}${s.estimatedDays.has(day) ? ' est' : ''}`;
+    const cls = `d${heatLevel(s.byDay.get(day) || 0, max)}`;
     cells.push(`<rect class="${cls}" x="${x}" y="${236 + row * STEP}" width="${CELL}" height="${CELL}" rx="2"><title>${day}: ${fmt(s.byDay.get(day) || 0)}</title></rect>`);
   }
   return months.join('') + cells.join('');
@@ -58,20 +58,17 @@ export function renderCard(login, s, today) {
   if (!s || !s.tokens) {
     return `${head} height="96" viewBox="0 0 ${W} 96" role="img" aria-label="@${esc(login)} is not tracking yet">${STYLE}<rect width="100%" height="100%" rx="10" fill="#111"/>${mark}<text class="h" x="24" y="32">@${esc(login)}</text><text x="24" y="70">NOT TRACKING YET · RUN npx tokengazer login</text></svg>`;
   }
-  const approx = s.estimatedTokens ? '~' : '';
-  const headline = s.estimatedTokens
-    ? `~${fmt(s.tokens)} TOKENS · ${fmt(s.estimatedTokens)} ESTIMATED`
-    : `${fmt(s.tokens)} TOKENS OVER ${s.activeDays} ACTIVE DAYS`;
+  const headline = `${fmt(s.tokens)} TOKENS OVER ${s.activeDays} ACTIVE DAYS`;
   const label = `@${login}: ${headline}`;
   return `${head} height="380" viewBox="0 0 ${W} 380" role="img" aria-label="${esc(label)}">${STYLE}
 <rect width="100%" height="100%" rx="10" fill="#111"/>${mark}<text class="h" x="24" y="32">@${esc(login)}</text>
-${stat(0, 'Tokens', approx + fmt(s.tokens))}${stat(1, 'Cost', `${approx}$${fmt(s.cost)}`)}${stat(2, 'Active days', String(s.activeDays))}${stat(3, 'Streak', `${s.streak}d`)}
+${stat(0, 'Tokens', fmt(s.tokens))}${stat(1, 'Cost', `$${fmt(s.cost)}`)}${stat(2, 'Active days', String(s.activeDays))}${stat(3, 'Streak', `${s.streak}d`)}
 <text class="h" x="24" y="170">${esc(headline)}</text>
 <text x="24" y="192">${fmt(s.byTool.claude || 0)} Claude · ${fmt(s.byTool.codex || 0)} Codex</text>
 <text x="24" y="${236 + STEP + 10}">MON</text><text x="24" y="${236 + 3 * STEP + 10}">WED</text><text x="24" y="${236 + 5 * STEP + 10}">FRI</text>
 ${grid(s, today)}
-<text x="24" y="362">${s.estimatedTokens ? 'DASHED DAYS ARE ESTIMATED FROM PROMPT HISTORY' : 'SHADE IS RELATIVE TO THE BUSIEST DAY'}</text>
-<text x="${W - 132}" y="362" text-anchor="end">LESS</text>${[0, 1, 2, 3, 4].map((l) => `<rect class="d${l}" x="${W - 124 + l * 15}" y="352" width="${CELL}" height="${CELL}" rx="2"/>`).join('')}<text x="${W - 24}" y="362" text-anchor="end">MORE</text>
+<text x="24" y="362">SHADE IS RELATIVE TO THE BUSIEST DAY</text>
+<text x="${W - 146}" y="362" text-anchor="end">LESS</text>${[0, 1, 2, 3, 4].map((l) => `<rect class="d${l}" x="${W - 138 + l * 15}" y="352" width="${CELL}" height="${CELL}" rx="2"/>`).join('')}<text x="${W - 24}" y="362" text-anchor="end">MORE</text>
 </svg>`;
 }
 
@@ -92,6 +89,6 @@ ${card}
 <h2>Models</h2><table><thead><tr><th>Tool</th><th>Model</th><th>Tokens</th><th>Cost</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>Embed</h2><code>${esc(embed)}</code>
 <p><small>tokengazer only receives daily token totals per tool and model. Prompts, code and file paths never leave your machine.
-Days before local logs were kept are estimated from prompt history and shown dashed. Get yours: <code>npx tokengazer login</code></small></p>
+Days before local logs were kept are estimated from prompt history. Get yours: <code>npx tokengazer login</code></small></p>
 </main></body></html>`;
 }

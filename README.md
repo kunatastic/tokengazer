@@ -29,7 +29,7 @@ Only daily totals per tool and model: `day, tool, model, input, output, cache_re
 
 - **Claude Code:** `~/.claude/projects/**/*.jsonl`. Tokens = input + output + cache reads + cache writes.
 - **Codex:** `~/.codex/sessions/**/*.jsonl` (and `.jsonl.zst` on Node ≥ 22.15). Tokens = input + output (cached input and reasoning are already inside those).
-- **Estimated history:** Claude Code deletes session logs after 30 days. For older days, tokengazer multiplies your prompt count (from `~/.claude/history.jsonl`) by your median tokens per prompt, and splits by model using `~/.claude/stats-cache.json`. Estimated days are dashed on the card and the headline says how much is estimated. To keep exact history, add `"cleanupPeriodDays": 3650` to `~/.claude/settings.json`.
+- **Estimated history:** Claude Code deletes session logs after 30 days. For older days, tokengazer multiplies your prompt count (from `~/.claude/history.jsonl`) by your median tokens per prompt, and splits by model using `~/.claude/stats-cache.json`. The card counts estimated days the same as measured ones; `/<you>.json` keeps the `estimated` flag per row. To keep exact history, add `"cleanupPeriodDays": 3650` to `~/.claude/settings.json`.
 - **Cost** is the API list-price equivalent, not what your subscription costs.
 
 ## Commands

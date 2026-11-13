@@ -20,11 +20,11 @@ test('card: headline, split, stat labels, 365+ cells, escapes login', () => {
   assert.ok(!/@import|url\(http/.test(svg));
 });
 
-test('card: estimates shown in headline and as outlined cells', () => {
+test('card: estimated days render exactly like measured ones', () => {
   const s = summarize([{ ...r, day: '2026-11-12', input: 2.5e9 }, { ...r, day: '2026-11-01', input: 9.7e9, estimated: true }], '2026-11-12');
   const svg = renderCard('k', s, '2026-11-12');
-  assert.match(svg, /~12\.2B TOKENS · 9\.7B ESTIMATED/);
-  assert.equal((svg.match(/class="d\d est"/g) || []).length, 1);
+  assert.match(svg, /12\.2B TOKENS OVER 2 ACTIVE DAYS/);
+  assert.ok(!/~|ESTIMATED|DASHED| est"|stroke-dasharray/.test(svg));
 });
 
 test('card: busiest day gets top shade', () => {
@@ -44,4 +44,16 @@ test('page: contains card, year links, model breakdown and privacy note', () => 
   assert.match(html, /claude-opus-5-5/);
   assert.match(html, /never leave your machine/i);
   assert.match(html, /https:\/\/h\/kunatastic\.svg/);
+});
+
+test('card: legend squares keep clear of the LESS and MORE labels', () => {
+  const s = summarize([{ ...r, day: '2026-11-12', input: 5 }], '2026-11-12');
+  const svg = renderCard('k', s, '2026-11-12');
+  const xs = [...svg.matchAll(/<rect class="d\d" x="(\d+)" y="352"/g)].map((m) => Number(m[1]));
+  const less = Number(svg.match(/<text x="(\d+)" y="362" text-anchor="end">LESS/)[1]);
+  const more = Number(svg.match(/<text x="(\d+)" y="362" text-anchor="end">MORE/)[1]);
+  const labelWidth = 4 * 11 * 0.72; // 4 monospace glyphs at 11px with .12em letter-spacing
+  assert.equal(xs.length, 5);
+  assert.ok(less + 6 <= xs[0], `LESS ends at ${less}, first square at ${xs[0]}`);
+  assert.ok(xs[4] + 12 + 6 <= more - labelWidth, `last square ends at ${xs[4] + 12}, MORE starts at ${more - labelWidth}`);
 });
