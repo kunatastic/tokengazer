@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS machines (
   machine_id TEXT PRIMARY KEY,
   github_id INTEGER NOT NULL,
   api_key_hash TEXT NOT NULL UNIQUE,
+  last_push_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS usage (
