@@ -1,18 +1,41 @@
 {
   "name": "tokengazer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A GitHub-style contribution graph for the AI tokens you burn in Claude Code and Codex.",
-  "keywords": ["claude-code", "codex", "tokens", "usage", "contribution-graph", "heatmap", "github-profile", "cli"],
+  "keywords": [
+    "claude-code",
+    "codex",
+    "tokens",
+    "usage",
+    "contribution-graph",
+    "heatmap",
+    "github-profile",
+    "cli"
+  ],
   "homepage": "https://github.com/kunatastic/tokengazer#readme",
   "bugs": "https://github.com/kunatastic/tokengazer/issues",
-  "repository": { "type": "git", "url": "git+https://github.com/kunatastic/tokengazer.git", "directory": "cli" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kunatastic/tokengazer.git",
+    "directory": "cli"
+  },
   "author": "kunatastic",
   "license": "MIT",
   "type": "module",
-  "bin": { "tokengazer": "bin/tokengazer.js" },
-  "files": ["bin", "src"],
-  "engines": { "node": ">=20" },
-  "os": ["darwin", "linux"],
+  "bin": {
+    "tokengazer": "bin/tokengazer.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "scripts": {
     "test": "TZ=Asia/Kolkata node --test",
     "prepack": "cp ../README.md ../LICENSE .",
