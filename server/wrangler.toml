@@ -14,3 +14,4 @@ dataset = "tokengazer_events"
 
 [vars]
 CF_ACCOUNT_ID = "b886360f9208d4739ddbb5dd2aa14791"
+PUBLIC_HOST = "https://tokengazer.vercel.app"

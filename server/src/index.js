@@ -1,5 +1,5 @@
 import { summarize } from './stats.js';
-import { logoSvg, renderCard, renderPage, renderStats } from './render.js';
+import { logoSvg, renderCard, renderLanding, renderLlms, renderPage, renderStats } from './render.js';
 
 const FIELDS = ['input', 'output', 'cache_read', 'cache_write', 'reasoning'];
 const MAX_ROWS = 500;
@@ -112,7 +112,7 @@ async function loadUser(env, login) {
   return { login: user.login, rows: results.map((r) => ({ ...r, estimated: Boolean(r.estimated) })) };
 }
 
-async function publicRoute(url, env) {
+async function publicRoute(url, env, host) {
   const match = url.pathname.match(/^\/([a-z0-9-]{1,39})(\.svg|\.json)?$/i);
   if (!match) return new Response('not found', { status: 404 });
   const [, login, ext] = match;
@@ -128,7 +128,7 @@ async function publicRoute(url, env) {
   const years = [...new Set(user.rows.map((r) => Number(r.day.slice(0, 4))))].sort((a, b) => b - a);
   const asked = Number(url.searchParams.get('year'));
   const year = years.includes(asked) ? asked : years[0] ?? Number(today.slice(0, 4));
-  const html = renderPage(user.login, summarize(user.rows, today), years, year, url.origin);
+  const html = renderPage(user.login, summarize(user.rows, today), years, year, host);
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
 }
 
@@ -162,25 +162,19 @@ async function stats(req, env) {
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
 
-const LANDING = `tokengazer — a GitHub-style contribution graph for the AI tokens you burn.
-
-  npx tokengazer          show your local stats
-  npx tokengazer login    publish /<github-username>.svg
-
-Only daily token totals per tool and model are uploaded. Prompts, code and file paths never leave your machine.
-`;
-
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const route = `${req.method} ${url.pathname}`;
+    const host = env.PUBLIC_HOST || url.origin;
     if (route === 'POST /api/login') return login(req, env);
     if (route === 'POST /api/push') return push(req, env);
     if (route === 'DELETE /api/me') return deleteMe(req, env);
     if (route === 'GET /favicon.svg') return new Response(logoSvg({ tile: true }), { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
     if (route === 'GET /stats') return stats(req, env);
-    if (route === 'GET /') return new Response(LANDING, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
-    if (req.method === 'GET') return publicRoute(url, env);
+    if (route === 'GET /') return new Response(renderLanding(host), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
+    if (route === 'GET /llms.txt') return new Response(renderLlms(host), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
+    if (req.method === 'GET') return publicRoute(url, env, host);
     return new Response('not found', { status: 404 });
   },
 };
