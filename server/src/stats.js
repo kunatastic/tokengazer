@@ -1,6 +1,6 @@
 const claude = (input, output, cache_read = input / 10) => ({ input, output, cache_read, cache_write: input * 1.25 });
 
-// USD per 1M tokens, API list prices as of 2026-11. ponytail: Haiku 5.5's >100K-prompt tier and GPT long-context tiers ignored.
+// USD per 1M tokens, API list prices as of 2026-11 (OpenAI rates from openai.com/api/pricing). ponytail: Haiku 5.5's >100K-prompt tier and GPT long-context tiers ignored.
 export const PRICES = {
   'claude-fable-5-2': claude(8, 40, 0.2),
   'claude-fable-5': claude(10, 50),
@@ -15,7 +15,8 @@ export const PRICES = {
   'claude-haiku-5-5': claude(0.1, 0.5),
   'claude-haiku-4': claude(1, 5),
   'gpt-6-astra': { input: 10, output: 50, cache_read: 1, cache_write: 0 },
-  'gpt-6.1-sol': { input: 2, output: 10, cache_read: 0.2, cache_write: 0 },
+  'gpt-6.1-sol': { input: 2, output: 10, cache_read: 0.1, cache_write: 0 },
+  'gpt-6.1-terra': { input: 1, output: 5, cache_read: 0.05, cache_write: 0 },
   'gpt-6-luna': { input: 0.1, output: 0.5, cache_read: 0.01, cache_write: 0 },
 };
 
