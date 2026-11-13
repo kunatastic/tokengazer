@@ -1,0 +1,11 @@
+{
+  "name": "tokengazer",
+  "version": "0.1.0",
+  "description": "A GitHub-style contribution graph for the AI tokens you burn in Claude Code and Codex.",
+  "type": "module",
+  "bin": { "tokengazer": "bin/tokengazer.js" },
+  "files": ["bin", "src"],
+  "engines": { "node": ">=20" },
+  "license": "MIT",
+  "scripts": { "test": "TZ=Asia/Kolkata node --test" }
+}
