@@ -46,6 +46,8 @@ Only daily totals per tool and model: `day, tool, model, input, output, cache_re
 | `tokengazer push` | Upload now |
 | `tokengazer logout [--delete]` | Remove the hourly job and local key; `--delete` also erases your data from the server |
 
+When a newer version is on npm, interactive runs ask to update. Saying yes moves the hourly job to the new version and reruns your command with it.
+
 ## Development
 
 ```sh

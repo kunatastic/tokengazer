@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chunk, chunkByDay, push, logout, scheduleCommand, writeConfig, readConfig } from '../src/cli.js';
+import { chunk, chunkByDay, isNewer, latestVersion, push, logout, scheduleCommand, writeConfig, readConfig } from '../src/cli.js';
 
 function fakeHomeWithConfigAndCodexLog() {
   const home = mkdtempSync(join(tmpdir(), 'tg-'));
@@ -75,4 +75,18 @@ test('logout keeps machine_id so re-login reuses the same server rows', async ()
   const home = fakeHomeWithConfigAndCodexLog();
   await logout({ home, log: () => {}, unschedule: () => {} });
   assert.deepEqual(readConfig(home), { machine_id: 'mach-0001' });
+});
+
+test('isNewer compares semver numerically and ignores prerelease tags', () => {
+  assert.equal(isNewer('0.1.10', '0.1.9'), true);
+  assert.equal(isNewer('0.2.0', '0.10.0'), false);
+  assert.equal(isNewer('0.1.1', '0.1.1'), false);
+  assert.equal(isNewer('0.0.0-stage', '0.1.0'), false);
+});
+
+test('latestVersion returns the newer npm version, or null when current or offline', async () => {
+  const npm = (version) => async () => ({ json: async () => ({ version }) });
+  assert.equal(await latestVersion({ fetchImpl: npm('0.2.0'), current: '0.1.1' }), '0.2.0');
+  assert.equal(await latestVersion({ fetchImpl: npm('0.1.1'), current: '0.1.1' }), null);
+  assert.equal(await latestVersion({ fetchImpl: async () => { throw new Error('offline'); }, current: '0.1.1' }), null);
 });

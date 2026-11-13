@@ -1,4 +1,5 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createInterface } from 'node:readline/promises';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -7,7 +8,7 @@ import { scan } from './logs.js';
 
 export const DEFAULT_HOST = process.env.TOKENGAZER_HOST || config.HOST;
 export const GITHUB_CLIENT_ID = process.env.TOKENGAZER_GITHUB_CLIENT_ID || config.GITHUB_CLIENT_ID;
-const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+export const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const JOB_MARKER = 'tokengazer@';
 const LABEL = 'dev.tokengazer.push';
 
@@ -91,8 +92,8 @@ const run = (cmd, args, input) => {
   try { return execFileSync(cmd, args, { input, stdio: ['pipe', 'pipe', 'ignore'] }).toString(); } catch { return ''; }
 };
 
-export function installSchedule(home) {
-  const s = scheduleCommand(process.platform, process.execPath, home);
+export function installSchedule(home, version = VERSION) {
+  const s = scheduleCommand(process.platform, process.execPath, home, version);
   if (s.file) {
     mkdirSync(join(home, 'Library/LaunchAgents'), { recursive: true });
     writeFileSync(s.file, s.content);
@@ -114,6 +115,34 @@ export function removeSchedule(home) {
     const current = run('crontab', ['-l']);
     if (current.includes(JOB_MARKER)) run('crontab', ['-'], current.split('\n').filter((l) => !l.includes(JOB_MARKER)).join('\n'));
   }
+}
+
+export function isNewer(a, b) {
+  const [x, y] = [a, b].map((v) => v.split('-')[0].split('.').map(Number));
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
+  return false;
+}
+
+export async function latestVersion({ fetchImpl = fetch, current = VERSION } = {}) {
+  try {
+    const res = await fetchImpl('https://registry.npmjs.org/tokengazer/latest', { signal: AbortSignal.timeout(1500) });
+    const { version } = await res.json();
+    return isNewer(version, current) ? version : null;
+  } catch { return null; }
+}
+
+// Returns true when the newer version took over this run.
+export async function offerUpdate(home, args) {
+  const latest = await latestVersion();
+  if (!latest) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await rl.question(`  tokengazer ${latest} is out (you have ${VERSION}). Update now? [Y/n] `).catch(() => 'n');
+  rl.close();
+  if (/^n/i.test(answer.trim())) return false;
+  if (readConfig(home)?.api_key) installSchedule(home, latest);
+  const r = spawnSync(join(dirname(process.execPath), 'npx'), ['-y', `tokengazer@${latest}`, ...args], { stdio: 'inherit' });
+  process.exitCode = r.status ?? 1;
+  return true;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
