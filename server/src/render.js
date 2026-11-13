@@ -92,3 +92,20 @@ ${card}
 Days before local logs were kept are estimated from prompt history. Get yours: <code>npx tokengazer login</code></small></p>
 </main></body></html>`;
 }
+
+const table = (head, rows) => `<table><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`;
+
+export function renderStats({ users, machines, active, signups, events, topCards }) {
+  const missing = '<p><small>Analytics Engine unavailable (needs CF_ACCOUNT_ID and CF_API_TOKEN).</small></p>';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>tokengazer stats</title>
+<style>body{margin:0;background:#0a0a0a;color:#ddd;font:14px/1.5 ${FONT}}main{max-width:900px;margin:40px auto;padding:0 16px}
+table{border-collapse:collapse;margin:8px 0 24px}td,th{text-align:left;padding:4px 12px 4px 0;border-bottom:1px solid #222}th{color:#888;font-weight:normal}small{color:#888}</style></head>
+<body><main><h1>tokengazer stats</h1>
+<table><tr><th>Users</th><td>${users}</td></tr><tr><th>Machines</th><td>${machines}</td></tr><tr><th>Active uploaders (7d)</th><td>${active}</td></tr></table>
+<h2>Signups (30d)</h2>${table(['Day', 'Signups'], signups.map((r) => [r.day, r.n]))}
+<h2>Events (30d)</h2>${events ? table(['Day', 'Event', 'Count'], events.map((r) => [r.day, r.event, r.n])) : missing}
+<h2>Most viewed cards (7d)</h2>${topCards ? table(['Login', 'Views'], topCards.map((r) => [r.login, r.n])) : missing}
+<p><small>Card views are approximate: GitHub's image proxy caches cards for up to an hour.</small></p>
+</main></body></html>`;
+}
