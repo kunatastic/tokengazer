@@ -10,7 +10,7 @@ npx tokengazer login    # sign in with GitHub, publish your card, refresh hourly
 `login` prints a snippet to paste anywhere Markdown renders:
 
 ```md
-[![tokens](https://tokengazer.kunatastic.workers.dev/<you>.svg)](https://tokengazer.kunatastic.workers.dev/<you>)
+[![tokens](https://tokengazer.tokengazer-server.workers.dev/<you>.svg)](https://tokengazer.tokengazer-server.workers.dev/<you>)
 ```
 
 | URL | What |

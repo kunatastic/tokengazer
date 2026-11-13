@@ -4,8 +4,8 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:
 import { dirname, join } from 'node:path';
 import { scan } from './logs.js';
 
-export const DEFAULT_HOST = process.env.TOKENGAZER_HOST || 'https://tokengazer.kunatastic.workers.dev';
-export const GITHUB_CLIENT_ID = process.env.TOKENGAZER_GITHUB_CLIENT_ID || 'REPLACE_WITH_OAUTH_APP_CLIENT_ID';
+export const DEFAULT_HOST = process.env.TOKENGAZER_HOST || 'https://tokengazer.tokengazer-server.workers.dev';
+export const GITHUB_CLIENT_ID = process.env.TOKENGAZER_GITHUB_CLIENT_ID || 'Ov23liFJzr2PPacMFUJr';
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const JOB_MARKER = 'tokengazer@';
 const LABEL = 'dev.tokengazer.push';
