@@ -63,21 +63,21 @@ async function push(req, env) {
   const body = await req.json().catch(() => null);
   const v = validateRows(body?.rows, utcToday());
   if (!v.ok) return json({ error: v.error }, 400);
-  const measuredDays = [...new Set(v.rows.filter((r) => !r.estimated).map((r) => r.day))];
-  const estimatedDays = [...new Set(v.rows.filter((r) => r.estimated).map((r) => r.day))];
-  // A measured day replaces everything for that day; an estimate never replaces a measured day.
+  const dayTools = [...new Set(v.rows.map((r) => `${r.day}|${r.tool}`))];
+  // Measured rows only ever grow (Claude deletes old logs, so a later scan can see less);
+  // estimates are replaced per (day, tool) and never land where a measured row exists.
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM usage WHERE machine_id = ?1 AND day IN (SELECT value FROM json_each(?2))').bind(m.machine_id, JSON.stringify(measuredDays)),
-    env.DB.prepare('DELETE FROM usage WHERE machine_id = ?1 AND estimated = 1 AND day IN (SELECT value FROM json_each(?2))').bind(m.machine_id, JSON.stringify(estimatedDays)),
+    env.DB.prepare("DELETE FROM usage WHERE machine_id = ?1 AND estimated = 1 AND day || '|' || tool IN (SELECT value FROM json_each(?2))")
+      .bind(m.machine_id, JSON.stringify(dayTools)),
     env.DB.prepare(`INSERT INTO usage (github_id, machine_id, day, tool, model, input, output, cache_read, cache_write, reasoning, estimated)
       SELECT ?1, ?2, j.value->>'day', j.value->>'tool', j.value->>'model', j.value->>'input', j.value->>'output',
              j.value->>'cache_read', j.value->>'cache_write', j.value->>'reasoning', j.value->>'estimated'
       FROM json_each(?3) j
       WHERE j.value->>'estimated' = 0
-         OR NOT EXISTS (SELECT 1 FROM usage u WHERE u.machine_id = ?2 AND u.day = j.value->>'day' AND u.estimated = 0)
+         OR NOT EXISTS (SELECT 1 FROM usage u WHERE u.machine_id = ?2 AND u.day = j.value->>'day' AND u.tool = j.value->>'tool' AND u.estimated = 0)
       ON CONFLICT (github_id, machine_id, day, tool, model) DO UPDATE SET
-        input = excluded.input, output = excluded.output, cache_read = excluded.cache_read,
-        cache_write = excluded.cache_write, reasoning = excluded.reasoning, estimated = excluded.estimated`)
+        input = MAX(input, excluded.input), output = MAX(output, excluded.output), cache_read = MAX(cache_read, excluded.cache_read),
+        cache_write = MAX(cache_write, excluded.cache_write), reasoning = MAX(reasoning, excluded.reasoning)`)
       .bind(m.github_id, m.machine_id, JSON.stringify(v.rows)),
   ]);
   return json({ stored: v.rows.length });

@@ -1,12 +1,13 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { scan } from './logs.js';
 
 export const DEFAULT_HOST = process.env.TOKENGAZER_HOST || 'https://tokengazer.kunatastic.workers.dev';
 export const GITHUB_CLIENT_ID = process.env.TOKENGAZER_GITHUB_CLIENT_ID || 'REPLACE_WITH_OAUTH_APP_CLIENT_ID';
-const JOB = 'npx -y tokengazer@latest push';
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const JOB_MARKER = 'tokengazer@';
 const LABEL = 'dev.tokengazer.push';
 
 const configPath = (home) => join(home, '.tokengazer/config.json');
@@ -27,12 +28,25 @@ export function chunk(rows, size = 500) {
   return out;
 }
 
+export function chunkByDay(rows, size = 500) {
+  const byDay = new Map();
+  for (const r of rows) byDay.set(r.day, [...(byDay.get(r.day) || []), r]);
+  const out = [];
+  let current = [];
+  for (const group of byDay.values()) {
+    if (current.length && current.length + group.length > size) { out.push(current); current = []; }
+    current = current.concat(group);
+  }
+  if (current.length) out.push(current);
+  return out;
+}
+
 export async function push({ home, host, fetchImpl = fetch }) {
   const config = readConfig(home);
   if (!config?.api_key) throw new Error('not logged in — run: npx tokengazer login');
   const base = host || config.host || DEFAULT_HOST;
   let stored = 0;
-  for (const rows of chunk(scan(home))) {
+  for (const rows of chunkByDay(scan(home))) {
     const res = await fetchImpl(`${base}/api/push`, {
       method: 'POST',
       headers: { authorization: `Bearer ${config.api_key}`, 'content-type': 'application/json' },
@@ -44,7 +58,12 @@ export async function push({ home, host, fetchImpl = fetch }) {
   return stored;
 }
 
-export function scheduleCommand(platform, shell, home) {
+// Absolute npx next to the node that ran login: the hourly job has no shell profile, so nvm-style PATHs are missing.
+export function scheduleCommand(platform, nodePath, home, version = VERSION) {
+  const bin = dirname(nodePath);
+  const path = `${bin}:/usr/bin:/bin`;
+  const log = join(home, '.tokengazer/push.log');
+  const args = [join(bin, 'npx'), '-y', `tokengazer@${version}`, 'push'];
   if (platform === 'darwin') {
     return {
       file: join(home, 'Library/LaunchAgents', `${LABEL}.plist`),
@@ -53,19 +72,18 @@ export function scheduleCommand(platform, shell, home) {
 <plist version="1.0"><dict>
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key><array>
-    <string>${shell}</string>
-    <string>-lc</string>
-    <string>${JOB}</string>
+${args.map((a) => `    <string>${a}</string>`).join('\n')}
   </array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${path}</string></dict>
   <key>StartInterval</key>
   <integer>3600</integer>
-  <key>StandardOutPath</key><string>${join(home, '.tokengazer/push.log')}</string>
-  <key>StandardErrorPath</key><string>${join(home, '.tokengazer/push.log')}</string>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
 </dict></plist>
 `,
     };
   }
-  return { content: `0 * * * * ${shell} -lc '${JOB}' >/dev/null 2>&1` };
+  return { content: `0 * * * * PATH=${path} ${args.join(' ')} >>${log} 2>&1` };
 }
 
 const run = (cmd, args, input) => {
@@ -73,7 +91,7 @@ const run = (cmd, args, input) => {
 };
 
 export function installSchedule(home) {
-  const s = scheduleCommand(process.platform, process.env.SHELL || '/bin/sh', home);
+  const s = scheduleCommand(process.platform, process.execPath, home);
   if (s.file) {
     mkdirSync(join(home, 'Library/LaunchAgents'), { recursive: true });
     writeFileSync(s.file, s.content);
@@ -81,18 +99,19 @@ export function installSchedule(home) {
     run('launchctl', ['load', '-w', s.file]);
   } else {
     const current = run('crontab', ['-l']);
-    if (!current.includes(JOB)) run('crontab', ['-'], `${current.trimEnd()}\n${s.content}\n`.trimStart());
+    const others = current.split('\n').filter((l) => l && !l.includes(JOB_MARKER));
+    run('crontab', ['-'], `${[...others, s.content].join('\n')}\n`);
   }
 }
 
 export function removeSchedule(home) {
-  const s = scheduleCommand(process.platform, process.env.SHELL || '/bin/sh', home);
+  const s = scheduleCommand(process.platform, process.execPath, home);
   if (s.file) {
     run('launchctl', ['unload', s.file]);
     rmSync(s.file, { force: true });
   } else {
     const current = run('crontab', ['-l']);
-    if (current.includes(JOB)) run('crontab', ['-'], current.split('\n').filter((l) => !l.includes(JOB)).join('\n'));
+    if (current.includes(JOB_MARKER)) run('crontab', ['-'], current.split('\n').filter((l) => !l.includes(JOB_MARKER)).join('\n'));
   }
 }
 
@@ -154,15 +173,16 @@ export async function login({ home, host = DEFAULT_HOST, log = console.log }) {
   log(`\n  Paste this into your README:\n  [![tokens](${host}/${user}.svg)](${host}/${user})\n`);
 }
 
-export async function logout({ home, deleteData = false, log = console.log }) {
+export async function logout({ home, deleteData = false, log = console.log, unschedule = removeSchedule }) {
   const config = readConfig(home);
   if (deleteData && config?.api_key) {
     const res = await fetch(`${config.host || DEFAULT_HOST}/api/me`, { method: 'DELETE', headers: { authorization: `Bearer ${config.api_key}` } });
     if (!res.ok) throw new Error(`delete failed: ${res.status}`);
     log('✓ Deleted your data from the server');
   }
-  removeSchedule(home);
-  if (existsSync(configPath(home))) rmSync(configPath(home));
+  unschedule(home);
+  // Keep machine_id: a new id on re-login would add a second copy of this machine's history.
+  if (config?.machine_id) writeConfig(home, { machine_id: config.machine_id });
   log('✓ Logged out');
 }
 
@@ -184,6 +204,6 @@ export function summary(home) {
     ...[...days].sort().slice(-7).map((d) => `  ${d}  ${fmt(sum((r) => r.day === d)).padStart(6)}`),
   ];
   const config = readConfig(home);
-  lines.push('', config ? `  Profile: ${config.host}/${config.login}` : '  Publish your graph: npx tokengazer login');
+  lines.push('', config?.api_key ? `  Profile: ${config.host}/${config.login}` : '  Publish your graph: npx tokengazer login');
   return lines.join('\n');
 }

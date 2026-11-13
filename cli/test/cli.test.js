@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chunk, push, scheduleCommand, writeConfig, readConfig } from '../src/cli.js';
+import { chunk, chunkByDay, push, logout, scheduleCommand, writeConfig, readConfig } from '../src/cli.js';
 
 function fakeHomeWithConfigAndCodexLog() {
   const home = mkdtempSync(join(tmpdir(), 'tg-'));
@@ -50,11 +50,29 @@ test('push without login rejects', async () => {
   await assert.rejects(push({ home, host: 'https://h', fetchImpl: async () => new Response('{}') }), /login/);
 });
 
-test('schedule: launchd hourly via login shell', () => {
-  const s = scheduleCommand('darwin', '/bin/zsh', '/Users/me');
+test('schedule: launchd hourly, pinned version, npx next to the current node (works under nvm)', () => {
+  const s = scheduleCommand('darwin', '/Users/me/.nvm/versions/node/v24/bin/node', '/Users/me', '0.1.0');
   assert.equal(s.file, '/Users/me/Library/LaunchAgents/dev.tokengazer.push.plist');
   assert.match(s.content, /<key>StartInterval<\/key>\s*<integer>3600<\/integer>/);
-  assert.match(s.content, /<string>\/bin\/zsh<\/string>\s*<string>-lc<\/string>\s*<string>npx -y tokengazer@latest push<\/string>/);
+  assert.match(s.content, /<string>\/Users\/me\/.nvm\/versions\/node\/v24\/bin\/npx<\/string>\s*<string>-y<\/string>\s*<string>tokengazer@0\.1\.0<\/string>\s*<string>push<\/string>/);
+  assert.match(s.content, /<key>PATH<\/key><string>\/Users\/me\/.nvm\/versions\/node\/v24\/bin:\/usr\/bin:\/bin<\/string>/);
+  assert.ok(!s.content.includes('@latest'));
 });
-test('schedule: linux crontab line', () =>
-  assert.equal(scheduleCommand('linux', '/bin/bash', '/home/me').content, "0 * * * * /bin/bash -lc 'npx -y tokengazer@latest push' >/dev/null 2>&1"));
+test('schedule: linux crontab line, pinned and logged', () =>
+  assert.equal(scheduleCommand('linux', '/opt/node/bin/node', '/home/me', '0.1.0').content,
+    "0 * * * * PATH=/opt/node/bin:/usr/bin:/bin /opt/node/bin/npx -y tokengazer@0.1.0 push >>/home/me/.tokengazer/push.log 2>&1"));
+
+test('chunkByDay never splits a day across chunks', () => {
+  const rows = [...Array(400)].map((_, i) => ({ day: `2026-01-${String(1 + (i % 3)).padStart(2, '0')}` }));
+  const chunks = chunkByDay(rows, 250);
+  for (const c of chunks) assert.ok(c.length <= 250);
+  const seen = new Map();
+  chunks.forEach((c, i) => c.forEach((r) => { if (seen.has(r.day)) assert.equal(seen.get(r.day), i, r.day); seen.set(r.day, i); }));
+  assert.equal(chunks.flat().length, 400);
+});
+
+test('logout keeps machine_id so re-login reuses the same server rows', async () => {
+  const home = fakeHomeWithConfigAndCodexLog();
+  await logout({ home, log: () => {}, unschedule: () => {} });
+  assert.deepEqual(readConfig(home), { machine_id: 'mach-0001' });
+});
