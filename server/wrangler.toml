@@ -7,3 +7,10 @@ compatibility_date = "2026-11-01"
 binding = "DB"
 database_name = "tokengazer"
 database_id = "8b60450f-8412-41ee-a68d-2e86b49f7664"
+
+[[analytics_engine_datasets]]
+binding = "EVENTS"
+dataset = "tokengazer_events"
+
+[vars]
+CF_ACCOUNT_ID = "b886360f9208d4739ddbb5dd2aa14791"
