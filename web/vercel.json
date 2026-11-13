@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "https://tokengazer.tokengazer-server.workers.dev/$1" }]
+}

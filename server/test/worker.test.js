@@ -52,3 +52,17 @@ test('POST /api/push without key → 401', async () => {
   const res = await handler.fetch(new Request('https://h/api/push', { method: 'POST', body: '{"rows":[]}' }), env);
   assert.equal(res.status, 401);
 });
+test('GET / serves the landing page with install commands', async () => {
+  const res = await get('/');
+  assert.equal(res.headers.get('content-type'), 'text/html; charset=utf-8');
+  assert.match(await res.text(), /npx tokengazer login/);
+});
+test('GET /llms.txt describes the endpoints for this host', async () => {
+  const body = await (await get('/llms.txt')).text();
+  assert.match(body, /^# tokengazer/);
+  assert.match(body, /https:\/\/h\/<github-username>\.svg/);
+});
+test('PUBLIC_HOST overrides the request origin in links', async () => {
+  const res = await handler.fetch(new Request('https://h/llms.txt'), { ...env, PUBLIC_HOST: 'https://tokengazer.vercel.app' });
+  assert.match(await res.text(), /https:\/\/tokengazer\.vercel\.app\/<github-username>\.svg/);
+});

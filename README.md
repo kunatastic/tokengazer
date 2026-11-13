@@ -5,7 +5,9 @@
 
 A GitHub-style contribution graph for the AI tokens you burn in Claude Code and Codex. Embed it in your README, resume or portfolio.
 
-[![tokens](https://tokengazer.tokengazer-server.workers.dev/kunatastic.svg)](https://tokengazer.tokengazer-server.workers.dev/kunatastic)
+**[tokengazer.vercel.app](https://tokengazer.vercel.app)** · [llms.txt](https://tokengazer.vercel.app/llms.txt)
+
+[![tokens](https://tokengazer.vercel.app/kunatastic.svg)](https://tokengazer.vercel.app/kunatastic)
 
 ```sh
 npx tokengazer          # your stats, locally — nothing is uploaded
@@ -15,7 +17,7 @@ npx tokengazer login    # sign in with GitHub, publish your card, refresh hourly
 `login` prints a snippet to paste anywhere Markdown renders:
 
 ```md
-[![tokens](https://tokengazer.tokengazer-server.workers.dev/<you>.svg)](https://tokengazer.tokengazer-server.workers.dev/<you>)
+[![tokens](https://tokengazer.vercel.app/<you>.svg)](https://tokengazer.vercel.app/<you>)
 ```
 
 | URL | What |
