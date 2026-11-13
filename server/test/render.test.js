@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { summarize } from '../src/stats.js';
-import { renderCard, renderPage, heatLevel } from '../src/render.js';
+import { renderCard, renderPage, renderLanding, heatLevel } from '../src/render.js';
 
 const r = { tool: 'claude', model: 'x', output: 0, cache_read: 0, cache_write: 0, reasoning: 0, estimated: false };
 
@@ -56,4 +56,29 @@ test('card: legend squares keep clear of the LESS and MORE labels', () => {
   assert.equal(xs.length, 5);
   assert.ok(less + 6 <= xs[0], `LESS ends at ${less}, first square at ${xs[0]}`);
   assert.ok(xs[4] + 12 + 6 <= more - labelWidth, `last square ends at ${xs[4] + 12}, MORE starts at ${more - labelWidth}`);
+});
+
+test('agent setup provides a complete, reviewable prompt on landing and profile pages', () => {
+  const s = summarize([], '2026-11-12');
+  for (const html of [renderLanding('https://h'), renderPage('alice', s, [], 2026, 'https://h')]) {
+    const prompt = html.match(/<textarea[^>]*id="agent-prompt"[^>]*>([\s\S]*?)<\/textarea>/)?.[1];
+    assert.ok(prompt, 'setup prompt is available without JavaScript');
+    for (const expected of ['Node.js 20', 'macOS or Linux', 'npx --yes tokengazer', 'npx --yes tokengazer login', 'npx --yes tokengazer push', 'browser', 'public', 'hourly', 'Never print']) {
+      assert.ok(prompt.includes(expected), expected);
+    }
+    assert.match(html, /<dialog[^>]*aria-labelledby="agent-title"/);
+  }
+});
+
+test('landing escapes the public host in metadata and embed snippets', () => {
+  const html = renderLanding('https://h/\"><script>alert(1)</script>');
+  assert.ok(!html.includes('<script>alert(1)</script>'));
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test('empty profiles explain how to publish usage and keep the setup option', () => {
+  const html = renderPage('alice', summarize([], '2026-11-12'), [], 2026, 'https://h');
+  assert.match(html, /No model usage yet/);
+  assert.match(html, /Add your agent/);
+  assert.match(html, /data-copy-target="embed-code"/);
 });
