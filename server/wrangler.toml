@@ -1,0 +1,9 @@
+name = "tokengazer"
+main = "src/index.js"
+account_id = "b886360f9208d4739ddbb5dd2aa14791"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tokengazer"
+database_id = "8b60450f-8412-41ee-a68d-2e86b49f7664"

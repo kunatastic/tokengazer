@@ -1,0 +1,30 @@
+name: Publish CLI to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Write config from repo variables
+        env:
+          HOST: ${{ vars.TOKENGAZER_HOST }}
+          CLIENT_ID: ${{ vars.TOKENGAZER_GITHUB_CLIENT_ID }}
+        run: |
+          test -n "$HOST" && test -n "$CLIENT_ID"
+          printf "export const HOST = '%s';\nexport const GITHUB_CLIENT_ID = '%s';\n" "$HOST" "$CLIENT_ID" > src/config.js
+      - run: npm test
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
