@@ -56,12 +56,16 @@ tokengazer push   ── daily totals ───────▶ upsert rows
 
 **Log sources**
 
-- Claude Code: `~/.claude/projects/**/*.jsonl`. Assistant entries carry `message.model`, `message.id`, `requestId`, timestamp and `message.usage` (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`). Dedupe on `message.id + requestId` (resumed sessions copy entries).
-- Codex: `~/.codex/sessions/**/*.jsonl`. `event_msg` entries of type `token_count` carry `info.last_token_usage` (`input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`); sum `last_token_usage` per event (not `total_token_usage`, which is cumulative). Model comes from the session's turn context (`"model"` field). Skip entries where `info` is null.
+- Claude Code: `~/.claude/projects/**/*.jsonl`. Skip model `<synthetic>`. Assistant entries carry `message.model`, `message.id`, `requestId`, timestamp and `message.usage` (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`). Dedupe on `message.id + requestId` (resumed sessions copy entries).
+- Codex: `~/.codex/sessions/**/*.jsonl` and `*.jsonl.zst` (zstd; skipped on Node without `zlib.zstdDecompressSync`). If a file has `token_usage_record` events, use only those (`payload.usage`). Otherwise use `event_msg` / `token_count`: take `info.last_token_usage` only when `info.total_token_usage` differs from the previous one (older Codex re-emits unchanged counts). Model comes from the session's turn context (`"model"` field). Skip entries where `info` is null.
 - Day bucket = the user's **local** date of the entry timestamp.
 
+**Estimating deleted Claude history** (learned from the earlier tokengraph experiment). Claude Code deletes session logs after 30 days by default (`cleanupPeriodDays`), but `~/.claude/history.jsonl` keeps every prompt's timestamp and `~/.claude/stats-cache.json` keeps `dailyModelTokens` per model. For each local day that has prompts in history but no Claude log rows: tokens = prompts × median(tokens/prompt over days that have both), split across models by that day's `dailyModelTokens` (else the most-used model), and across input/output/cache fields by the measured overall mix. These rows carry `estimated: true`. On the author's machine this is ~9.7B estimated vs ~2.5B measured, so estimates are shown, never hidden:
+- Card headline becomes `~12.2B TOKENS · 9.7B ESTIMATED` when any estimate exists; estimated-only days render as outlined squares.
+- Login prints a tip to set `"cleanupPeriodDays": 3650` in `~/.claude/settings.json` (advice only, never edits settings).
+
 **Payload** (one row per day × tool × model):
-`{ day, tool: "claude"|"codex", model, input, output, cache_read, cache_write, reasoning }`
+`{ day, tool: "claude"|"codex", model, input, output, cache_read, cache_write, reasoning, estimated }`
 
 **What "tokens" means** (owner-visible number, decided by the builder check):
 - Claude: `input + output + cache_read + cache_write` — cache reads included, matching the reference card and how usage tools usually report "tokens burned".
@@ -72,9 +76,10 @@ Cost is computed **server-side** from a price table, so prices can be fixed with
 ### Server — Cloudflare Worker + D1
 
 - Chosen because README images are fetched by GitHub's image proxy with a short timeout; a host that sleeps (e.g. Render free) would show broken images. Free tier covers early usage.
-- Tables: `users(github_id PK, login, created_at)`, `machines(machine_id PK, github_id, api_key_hash, created_at)`, `usage(github_id, machine_id, day, tool, model, input, output, cache_read, cache_write, reasoning, PK(github_id, machine_id, day, tool, model))`. Reads sum across machines.
+- Tables: `users(github_id PK, login, created_at)`, `machines(machine_id PK, github_id, api_key_hash, created_at)`, `usage(github_id, machine_id, day, tool, model, input, output, cache_read, cache_write, reasoning, estimated, PK(github_id, machine_id, day, tool, model))`. Reads sum across machines.
 - `POST /api/push` (Bearer API key → identifies machine): replace that machine's rows for the days sent. Reject rows with negative numbers or dates in the future / before 2023; cap a single day at a sanity ceiling.
 - `GET /<login>.svg`: card rendered on request, `Cache-Control: max-age=3600`. Unknown user → a "not tracking yet" card, not a 404 image.
+- `GET /<login>.json`: the summed rows, for embedding in a portfolio.
 - `GET /<login>`: HTML profile page with the same heatmap (year picker), stat cards and a per-tool/per-model breakdown.
 - Host: v1 serves on `tokengazer.<account>.workers.dev`. When a domain is bought later, it is added as a second route and the `workers.dev` route stays live forever, so already-pasted embeds never break; new snippets use the domain.
 - GitHub login renames: key on `github_id`, refresh `login` on each push.
