@@ -1,6 +1,6 @@
 {
   "name": "tokengazer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A GitHub-style contribution graph for the AI tokens you burn in Claude Code and Codex.",
   "keywords": [
     "claude-code",
