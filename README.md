@@ -1,4 +1,7 @@
-# tokengazer
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/lockup-dark.svg">
+  <img alt="tokengazer" src="brand/lockup-light.svg" height="48">
+</picture>
 
 A GitHub-style contribution graph for the AI tokens you burn in Claude Code and Codex. Embed it in your README, resume or portfolio.
 

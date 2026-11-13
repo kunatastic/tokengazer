@@ -1,5 +1,5 @@
 import { summarize } from './stats.js';
-import { renderCard, renderPage } from './render.js';
+import { logoSvg, renderCard, renderPage } from './render.js';
 
 const FIELDS = ['input', 'output', 'cache_read', 'cache_write', 'reasoning'];
 const MAX_ROWS = 500;
@@ -133,6 +133,7 @@ export default {
     if (route === 'POST /api/login') return login(req, env);
     if (route === 'POST /api/push') return push(req, env);
     if (route === 'DELETE /api/me') return deleteMe(req, env);
+    if (route === 'GET /favicon.svg') return new Response(logoSvg({ tile: true }), { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
     if (route === 'GET /') return new Response(LANDING, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (req.method === 'GET') return publicRoute(url, env);
     return new Response('not found', { status: 404 });

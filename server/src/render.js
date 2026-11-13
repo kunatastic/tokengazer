@@ -15,6 +15,22 @@ text{font-family:${FONT};fill:#8b8b8b;font-size:11px;letter-spacing:.12em}
 </style>`;
 
 const ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const RAMP = { '2,0': '#7a3a1d', '1,1': '#b04f22', '2,2': '#e8692c' };
+
+function logoCells(light = false) {
+  let out = '';
+  for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) {
+    out += `<rect x="${4 + x * 32}" y="${4 + y * 32}" width="28" height="28" rx="6" fill="${RAMP[`${x},${y}`] || (light ? '#e8e2dd' : '#2a211c')}"/>`;
+  }
+  return out;
+}
+
+export function logoSvg({ light = false, tile = false } = {}) {
+  const bg = tile ? '<rect x="-8" y="-8" width="116" height="116" rx="26" fill="#111"/>' : '';
+  const box = tile ? '-8 -8 116 116' : '0 0 100 100';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="${box}">${bg}${logoCells(light)}</svg>`;
+}
+
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ENTITIES[c]);
 
 export function heatLevel(v, max) {
@@ -54,7 +70,7 @@ function stat(i, label, value) {
 
 export function renderCard(login, s, today) {
   const head = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}"`;
-  const mark = `<text class="mark" x="${W - 24}" y="32" text-anchor="end">tokengazer</text>`;
+  const mark = `<g class="logo" transform="translate(${W - 124},16) scale(.2)">${logoCells()}</g><text class="mark" x="${W - 24}" y="32" text-anchor="end">tokengazer</text>`;
   if (!s || !s.tokens) {
     return `${head} height="96" viewBox="0 0 ${W} 96" role="img" aria-label="@${esc(login)} is not tracking yet">${STYLE}<rect width="100%" height="100%" rx="10" fill="#111"/>${mark}<text class="h" x="24" y="32">@${esc(login)}</text><text x="24" y="70">NOT TRACKING YET · RUN npx tokengazer login</text></svg>`;
   }
@@ -79,7 +95,7 @@ export function renderPage(login, s, years, year, host) {
   const embed = `[![tokens](${host}/${login}.svg)](${host}/${login})`;
   const rows = s.byModel.map((m) => `<tr><td>${esc(m.tool)}</td><td>${esc(m.model)}</td><td>${fmt(m.tokens)}</td><td>$${fmt(m.cost)}</td></tr>`).join('');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>@${esc(login)} · tokengazer</title>
+<title>@${esc(login)} · tokengazer</title><link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>body{margin:0;background:#0a0a0a;color:#ddd;font:15px/1.5 ${FONT}}main{max-width:900px;margin:40px auto;padding:0 16px}
 svg{max-width:100%;height:auto}a{color:#e8692c}nav a{margin-right:12px}nav a[aria-current]{color:#fff}
 table{width:100%;border-collapse:collapse;margin:24px 0}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid #222}
