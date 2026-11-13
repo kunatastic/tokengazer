@@ -6,7 +6,7 @@ GitHub contribution graphs let developers show off commits. tokengazer does the 
 
 ## Goals
 
-- Setup in about two steps: run one command (or install the Claude Code plugin), sign in with GitHub, paste a link.
+- Setup in about two steps: run one command, sign in with GitHub, paste a link.
 - Track Claude Code and Codex usage from local logs.
 - Public, always-current embeddable image per GitHub user, plus a profile page.
 - Store per-user daily totals server-side so a leaderboard/rank can be added later without users re-installing.
@@ -14,6 +14,7 @@ GitHub contribution graphs let developers show off commits. tokengazer does the 
 ## Non-goals (v1)
 
 - Leaderboard / rank (data is kept; UI later).
+- Claude Code plugin (TODO, later): only an install shortcut + `/tokengazer` command. The hourly job already covers Claude and Codex, and the 1h image cache makes a session-end push pointless. Revisit if the plugin marketplace matters for discovery.
 - Gemini, Cursor, Copilot (Cursor/Copilot keep no local token counts).
 - Windows, light theme, custom domain (buy once there is traffic).
 - Verifying numbers — they are self-reported, like any local stats tool.
@@ -85,15 +86,9 @@ Cost is computed **server-side** from a price table, so prices can be fixed with
 - Stat cards: Tokens (all time), Cost (API-equivalent), Active days, Current streak.
 - Dark theme, orange scale; small "tokengazer" mark. Monospace system font stack only (GitHub's proxy strips external fonts).
 
-### Claude Code plugin
-
-Published from the same repo as a plugin marketplace (`/plugin marketplace add kunatastic/tokengazer`).
-- `/tokengazer` command — runs `npx tokengazer`; first time, walks through login.
-- `SessionEnd` hook — runs `npx -y tokengazer push` in the background, silently, only if logged in.
-
 ## Repo layout
 
-Single repo `kunatastic/tokengazer`: `cli/` (npm package), `server/` (Worker), `plugin/` (Claude plugin + marketplace manifest).
+Single repo `kunatastic/tokengazer`: `cli/` (npm package), `server/` (Worker).
 
 ## Privacy
 
