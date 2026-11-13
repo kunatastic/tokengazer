@@ -17,6 +17,6 @@
     "test": "TZ=Asia/Kolkata node --test",
     "prepack": "cp ../README.md ../LICENSE .",
     "postpack": "rm -f README.md LICENSE",
-    "prepublishOnly": "npm test && node -e \"import('./src/cli.js').then(m=>{if(m.GITHUB_CLIENT_ID.startsWith('REPLACE'))throw new Error('set GITHUB_CLIENT_ID before publishing')})\""
+    "prepublishOnly": "npm test"
   }
 }

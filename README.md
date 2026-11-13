@@ -50,6 +50,6 @@ TOKENGAZER_HOST=http://localhost:8787 node cli/bin/tokengazer.js push
 
 ### Deploy
 
-1. Create a GitHub OAuth App (Settings → Developer settings → OAuth Apps), tick **Enable Device Flow**, and put its client ID in `cli/src/cli.js` (`GITHUB_CLIENT_ID`). No client secret is needed.
+1. Create a GitHub OAuth App with **Enable Device Flow** ticked (no client secret needed), and store its client ID and the Worker URL as repo variables `TOKENGAZER_GITHUB_CLIENT_ID` and `TOKENGAZER_HOST`.
 2. `cd server && npx wrangler d1 create tokengazer`, put the id in `wrangler.toml`, then `npx wrangler d1 execute tokengazer --remote --file schema.sql && npm run deploy`.
-3. Set `DEFAULT_HOST` in `cli/src/cli.js` to the deployed URL, then `cd cli && npm publish`.
+3. Add an `NPM_TOKEN` repo secret, then publish a GitHub release. `.github/workflows/publish.yml` writes `cli/src/config.js` from the variables and runs `npm publish`.

@@ -2,10 +2,11 @@ import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import * as config from './config.js';
 import { scan } from './logs.js';
 
-export const DEFAULT_HOST = process.env.TOKENGAZER_HOST || 'https://tokengazer.tokengazer-server.workers.dev';
-export const GITHUB_CLIENT_ID = process.env.TOKENGAZER_GITHUB_CLIENT_ID || 'Ov23liFJzr2PPacMFUJr';
+export const DEFAULT_HOST = process.env.TOKENGAZER_HOST || config.HOST;
+export const GITHUB_CLIENT_ID = process.env.TOKENGAZER_GITHUB_CLIENT_ID || config.GITHUB_CLIENT_ID;
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const JOB_MARKER = 'tokengazer@';
 const LABEL = 'dev.tokengazer.push';
